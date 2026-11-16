@@ -13,7 +13,7 @@ The goal persists across Claude Code restarts and survives Esc presses. The toke
 | Command | What it does |
 |---|---|
 | `/goal <objective>` | Set the goal and start working immediately |
-| `/goal` | Show current goal, status, turn count, time elapsed, tokens used |
+| `/goal` | Show current goal, status, turn count, time elapsed, tokens used, and estimated cost |
 | `/goal pause` | Stop the loop. Claude won't continue until you resume. |
 | `/goal resume` | Resume a paused goal |
 | `/goal edit <new objective>` | Replace the objective. Resumes if paused. |
@@ -23,24 +23,31 @@ The goal persists across Claude Code restarts and survives Esc presses. The toke
 
 ## Install
 
-**1. Copy the skill files** into your project's `.claude/skills/goal/` directory:
-
-```
-.claude/skills/goal/
-  goal.py
-  goal-continue.sh
-  install.py
-  install.sh
-  SKILL.md
-```
-
-Or run the included installer (requires the project `.venv` to be active):
+The installer handles both scopes. Clone or download this repo, then run:
 
 ```bash
-python install.py
+# Install for a single project (registers hook and permission in .claude/settings.json)
+python install.py --scope project
+
+# Install globally (registers hook and permission in ~/.claude/settings.json)
+python install.py --scope global
 ```
 
-**2. Register the Stop hook** in `.claude/settings.json` under `hooks.Stop[0].hooks`:
+The default scope is `project` when run from inside a project directory, `global` otherwise. Restart Claude Code after either install so the new hook takes effect.
+
+### What the installer does
+
+**Project install** copies the skill files into `<project>/.claude/skills/goal/` and patches `<project>/.claude/settings.json`.
+
+**Global install** copies the skill files into `~/.claude/skills/goal/` and patches `~/.claude/settings.json`. A globally-installed skill is available in every Claude Code project without any per-project setup.
+
+### Manual install (project scope)
+
+If you prefer not to run the installer:
+
+**1.** Copy the skill files into your project's `.claude/skills/goal/` directory.
+
+**2.** Register the Stop hook in `.claude/settings.json` under `hooks.Stop[0].hooks`:
 
 ```json
 {
@@ -50,13 +57,31 @@ python install.py
 }
 ```
 
-**3. Add the permission** to `permissions.allow` in the same file:
+**3.** Add the permission to `permissions.allow` in the same file:
 
 ```json
 "Bash(.venv/bin/python .claude/skills/goal/goal.py *)"
 ```
 
-**4. Restart Claude Code** so the new hook takes effect.
+### Manual install (global scope)
+
+Same as above, but use `~/.claude/settings.json` and replace `$CLAUDE_PROJECT_DIR/.claude/skills/goal/` with the absolute path to `~/.claude/skills/goal/` in both the hook command and the permission.
+
+## Cost tracking
+
+Running `/goal` after a session reports estimated cost alongside tokens and time. Costs are calculated from a local price cache (`price_cache.json`) sourced from the [LiteLLM model pricing index](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json), which covers all Claude models and is community-maintained.
+
+**Refresh prices on demand:**
+
+```bash
+python goal.py --refresh-prices
+```
+
+This fetches the latest pricing data and updates the local cache. Run it after Anthropic price changes or when you want to verify accuracy.
+
+**Staleness warning:** When the cache is more than 30 days old, `/goal` prints a notice with the exact refresh command. The warning does not block the goal -- it appears inline in the status output so you can run the command directly from the Claude Code terminal.
+
+The cache is stored beside `goal.py` and is git-ignored by default.
 
 ## Safety limits
 
