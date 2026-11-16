@@ -16,6 +16,7 @@ import pathlib
 import re
 import sys
 import tempfile
+import urllib.request
 
 MAX_OBJECTIVE_CHARS = 4000
 STALL_LIMIT = 3
@@ -23,6 +24,12 @@ DEFAULT_MAX_CONTINUATIONS = 100
 SESSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 SLASH_BARE_COMMANDS = ("pause", "resume", "clear", "status")
 USAGE_FIELDS = ("input", "output", "cache_creation", "cache_read")
+
+LITELLM_PRICES_URL = (
+    "https://raw.githubusercontent.com/BerriAI/litellm/main"
+    "/model_prices_and_context_window.json"
+)
+PRICE_CACHE_STALE_DAYS = 30
 
 DEFAULT_CONFIG = {
     "features": {"goals": True},
@@ -238,6 +245,104 @@ def format_tokens(count):
     return str(count)
 
 
+def price_cache_path():
+    return pathlib.Path(__file__).resolve().parent / "price_cache.json"
+
+
+def _load_raw_price_cache():
+    path = price_cache_path()
+    if not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def fetch_and_save_prices(silent=False):
+    """Fetch Claude model prices from the LiteLLM index and save to cache."""
+    try:
+        with urllib.request.urlopen(LITELLM_PRICES_URL, timeout=15) as resp:
+            raw = json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:
+        if not silent:
+            script = pathlib.Path(__file__).name
+            print(f"Price fetch failed: {exc}", file=sys.stderr)
+            print(f"  To retry: python {script} prices --refresh", file=sys.stderr)
+        return None
+    models = {}
+    for name, entry in raw.items():
+        if not isinstance(entry, dict) or "claude" not in name.lower():
+            continue
+        input_cost = entry.get("input_cost_per_token")
+        output_cost = entry.get("output_cost_per_token")
+        if input_cost is None or output_cost is None:
+            continue
+        models[name] = {
+            "input": round(float(input_cost) * 1_000_000, 6),
+            "output": round(float(output_cost) * 1_000_000, 6),
+            "cache_creation": round(float(entry.get("cache_creation_input_token_cost") or 0) * 1_000_000, 6),
+            "cache_read": round(float(entry.get("cache_read_input_token_cost") or 0) * 1_000_000, 6),
+        }
+    cache = {"fetched_at": now().isoformat(), "source": LITELLM_PRICES_URL, "models": models}
+    path = price_cache_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(cache, indent=2), encoding="utf-8")
+    return cache
+
+
+def get_prices(auto_fetch=True):
+    """Return (models_dict, age_days). models_dict is None when unavailable."""
+    cache = _load_raw_price_cache()
+    if cache is None:
+        if not auto_fetch:
+            return None, None
+        cache = fetch_and_save_prices(silent=True)
+        if cache is None:
+            return None, None
+    try:
+        age_days = (now() - parse_time(cache["fetched_at"])).days
+        return cache.get("models", {}), age_days
+    except (KeyError, ValueError):
+        return None, None
+
+
+def estimate_cost(by_model, prices):
+    """Return total estimated cost in USD, or None if prices are unavailable."""
+    if not prices or not by_model:
+        return None
+    total = 0.0
+    for model, usage in by_model.items():
+        entry = prices.get(model)
+        if entry is None:
+            for key in prices:
+                if model.startswith(key) or key.startswith(model):
+                    entry = prices[key]
+                    break
+        if entry is None:
+            continue
+        total += usage["input"] * entry["input"] / 1_000_000
+        total += usage["output"] * entry["output"] / 1_000_000
+        total += usage["cache_creation"] * entry["cache_creation"] / 1_000_000
+        total += usage["cache_read"] * entry["cache_read"] / 1_000_000
+    return total if total > 0 else None
+
+
+def format_cost(amount):
+    if amount is None:
+        return None
+    if amount < 0.01:
+        return f"~${amount:.4f}"
+    return f"~${amount:.2f}"
+
+
+def stale_warning(age_days):
+    if age_days is None or age_days < PRICE_CACHE_STALE_DAYS:
+        return None
+    script = pathlib.Path(__file__).name
+    return f"Price cache is {age_days} days old -- to refresh: python {script} prices --refresh"
+
+
 def progress_line(state, at):
     budget = load_config()["goals"]["max_goal_token_budget"]
     spent = format_tokens(budget_tokens(state["usage"]))
@@ -248,8 +353,12 @@ def progress_line(state, at):
     )
 
 
-def render_status(state, at):
-    lines = [f"Goal: {state['objective']}", f"Status: {progress_line(state, at)}"]
+def render_status(state, at, cost=None):
+    status = progress_line(state, at)
+    cost_str = format_cost(cost)
+    if cost_str:
+        status += f" | {cost_str}"
+    lines = [f"Goal: {state['objective']}", f"Status: {status}"]
     if state["reason"]:
         lines.append(f"Reason: {state['reason']}")
     return "\n".join(lines)
@@ -305,10 +414,19 @@ def run_set(session, objective):
         raise SystemExit("Goal error: goals are disabled (features.goals is false in .claude/goal-config.json).")
     existing = read_state(session)
     if existing and existing["status"] in ("active", "paused"):
-        raise SystemExit(
-            f"Goal error: a goal is already {existing['status']}. "
-            "Run /goal clear first, or /goal edit <new objective>."
-        )
+        at = now()
+        existing["usage"], existing["by_model"] = read_usage(session, existing)
+        lines = [
+            f"Goal error: a goal is already {existing['status']}.",
+            "",
+            render_status(existing, at),
+            "",
+            "  To replace:  /goal clear, then /goal <new objective>",
+            "  To update:   /goal edit <new objective>",
+        ]
+        if existing["status"] == "paused":
+            lines.append("  To continue: /goal resume")
+        raise SystemExit("\n".join(lines))
     at = now()
     state = new_state(objective, at)
     write_state(session, state)
@@ -321,10 +439,23 @@ def run_set(session, objective):
 def run_view(session):
     state = read_state(session)
     if not state:
-        print("No goal set. Start one with /goal <objective>.")
+        print("No goal is active.\n")
+        print("Start one:  /goal <objective>")
+        print("Commands:   /goal pause | resume | clear | edit <objective>")
+        print("Prices:     /goal prices")
     else:
         state["usage"], state["by_model"] = read_usage(session, state)
-        print(render_status(state, now()))
+        prices, age_days = get_prices(auto_fetch=True)
+        cost = estimate_cost(state["by_model"], prices)
+        print(render_status(state, now(), cost=cost))
+        warning = stale_warning(age_days)
+        if warning:
+            print(f"\nNote: {warning}")
+        status = state["status"]
+        if status in ("complete", "budget_limited", "stall"):
+            print("\nThis goal is finished. Run /goal clear to remove it, or /goal edit <new objective> to start another.")
+        elif status == "paused":
+            print("\nRun /goal resume to continue working.")
     print("ACTION: report")
 
 
@@ -391,8 +522,45 @@ def run_complete(session, evidence):
     state["usage"], state["by_model"] = read_usage(session, state)
     end_state(state, "complete", evidence.strip(), at)
     write_state(session, state)
+    prices, _ = get_prices(auto_fetch=False)
+    cost = estimate_cost(state["by_model"], prices)
     print("Goal complete.")
-    print(render_status(state, at))
+    print(render_status(state, at, cost=cost))
+
+
+def run_prices(refresh=False):
+    """Show cached price table, optionally refreshing first."""
+    if refresh:
+        print("Fetching latest prices from LiteLLM...", flush=True)
+        cache = fetch_and_save_prices(silent=False)
+        if cache is None:
+            raise SystemExit(1)
+        print(f"Prices updated ({len(cache['models'])} Claude models).")
+    prices, age_days = get_prices(auto_fetch=False)
+    if prices is None:
+        script = pathlib.Path(__file__).name
+        print(f"No price cache found. Run: python {script} prices --refresh")
+        return
+    age_str = f"{age_days}d old" if age_days is not None else "unknown age"
+    print(f"Price cache: {age_str} | source: LiteLLM model index")
+    warning = stale_warning(age_days)
+    if warning:
+        print(f"Note: {warning}")
+    print()
+    header = f"{'Model':<55} {'Input':>8} {'Output':>8} {'Cache-W':>8} {'Cache-R':>8}"
+    print(header)
+    print("-" * len(header))
+    for name in sorted(prices):
+        entry = prices[name]
+        print(
+            f"{name:<55} "
+            f"${entry['input']:>7.4f} "
+            f"${entry['output']:>7.4f} "
+            f"${entry['cache_creation']:>7.4f} "
+            f"${entry['cache_read']:>7.4f}"
+        )
+    print()
+    print("All rates are $/1M tokens.")
 
 
 def run_slash(session, text):
@@ -476,6 +644,8 @@ def build_parser():
     complete = commands.add_parser("complete")
     complete.add_argument("--evidence", default="")
     commands.add_parser("stop-hook")
+    prices = commands.add_parser("prices", help="show cached price table")
+    prices.add_argument("--refresh", action="store_true", help="fetch latest prices before showing")
     return parser
 
 
@@ -497,6 +667,8 @@ def main(argv=None):
         run_pause(args.session, args.reason)
     elif args.command == "complete":
         run_complete(args.session, args.evidence)
+    elif args.command == "prices":
+        run_prices(refresh=args.refresh)
 
 
 if __name__ == "__main__":
