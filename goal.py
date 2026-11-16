@@ -25,11 +25,22 @@ SESSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 SLASH_BARE_COMMANDS = ("pause", "resume", "clear", "status")
 USAGE_FIELDS = ("input", "output", "cache_creation", "cache_read")
 
-LITELLM_PRICES_URL = (
-    "https://raw.githubusercontent.com/BerriAI/litellm/main"
-    "/model_prices_and_context_window.json"
-)
 PRICE_CACHE_STALE_DAYS = 30
+
+# Bundled fallback prices ($/1M tokens). Used when all network sources fail.
+# Update this table and BUNDLED_PRICES_DATE with each skill release.
+BUNDLED_PRICES_DATE = "2026-11-16"
+BUNDLED_PRICES = {
+    "claude-3-haiku-20240307":    {"input": 0.25,  "output": 1.25,  "cache_creation": 0.30,  "cache_read": 0.03},
+    "claude-3-5-haiku-20241022":  {"input": 0.80,  "output": 4.00,  "cache_creation": 1.00,  "cache_read": 0.08},
+    "claude-3-5-sonnet-20241022": {"input": 3.00,  "output": 15.00, "cache_creation": 3.75,  "cache_read": 0.30},
+    "claude-3-7-sonnet-20250219": {"input": 3.00,  "output": 15.00, "cache_creation": 3.75,  "cache_read": 0.30},
+    "claude-3-opus-20240229":     {"input": 15.00, "output": 75.00, "cache_creation": 18.75, "cache_read": 1.50},
+    "claude-haiku-4-5-20251001":  {"input": 1.00,  "output": 5.00,  "cache_creation": 1.25,  "cache_read": 0.10},
+    "claude-haiku-4-5":           {"input": 1.00,  "output": 5.00,  "cache_creation": 1.25,  "cache_read": 0.10},
+    "claude-sonnet-4-6":          {"input": 3.00,  "output": 15.00, "cache_creation": 3.75,  "cache_read": 0.30},
+    "claude-opus-4-7":            {"input": 15.00, "output": 75.00, "cache_creation": 18.75, "cache_read": 1.50},
+}
 
 DEFAULT_CONFIG = {
     "features": {"goals": True},
@@ -259,52 +270,112 @@ def _load_raw_price_cache():
         return None
 
 
-def fetch_and_save_prices(silent=False):
-    """Fetch Claude model prices from the LiteLLM index and save to cache."""
-    try:
-        with urllib.request.urlopen(LITELLM_PRICES_URL, timeout=15) as resp:
-            raw = json.loads(resp.read().decode("utf-8"))
-    except Exception as exc:
-        if not silent:
-            script = pathlib.Path(__file__).name
-            print(f"Price fetch failed: {exc}", file=sys.stderr)
-            print(f"  To retry: python {script} prices --refresh", file=sys.stderr)
-        return None
+def _parse_litellm(raw):
     models = {}
     for name, entry in raw.items():
         if not isinstance(entry, dict) or "claude" not in name.lower():
             continue
-        input_cost = entry.get("input_cost_per_token")
-        output_cost = entry.get("output_cost_per_token")
-        if input_cost is None or output_cost is None:
+        inp = entry.get("input_cost_per_token")
+        out = entry.get("output_cost_per_token")
+        if inp is None or out is None:
             continue
         models[name] = {
-            "input": round(float(input_cost) * 1_000_000, 6),
-            "output": round(float(output_cost) * 1_000_000, 6),
+            "input": round(float(inp) * 1_000_000, 6),
+            "output": round(float(out) * 1_000_000, 6),
             "cache_creation": round(float(entry.get("cache_creation_input_token_cost") or 0) * 1_000_000, 6),
             "cache_read": round(float(entry.get("cache_read_input_token_cost") or 0) * 1_000_000, 6),
         }
-    cache = {"fetched_at": now().isoformat(), "source": LITELLM_PRICES_URL, "models": models}
-    path = price_cache_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(cache, indent=2), encoding="utf-8")
-    return cache
+    return models
+
+
+def _parse_openrouter(raw):
+    models = {}
+    for item in raw.get("data", []):
+        model_id = item.get("id", "")
+        if "claude" not in model_id.lower():
+            continue
+        pricing = item.get("pricing") or {}
+        prompt = pricing.get("prompt")
+        completion = pricing.get("completion")
+        if prompt is None or completion is None:
+            continue
+        try:
+            entry = {
+                "input": round(float(prompt) * 1_000_000, 6),
+                "output": round(float(completion) * 1_000_000, 6),
+                "cache_creation": round(float(pricing.get("input_cache_write") or 0) * 1_000_000, 6),
+                "cache_read": round(float(pricing.get("input_cache_read") or 0) * 1_000_000, 6),
+            }
+        except (TypeError, ValueError):
+            continue
+        models[model_id] = entry
+        if "/" in model_id:
+            models.setdefault(model_id.split("/", 1)[1], entry)
+    return models
+
+
+_PRICE_SOURCES = [
+    {
+        "name": "LiteLLM",
+        "url": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
+        "parse": _parse_litellm,
+    },
+    {
+        "name": "OpenRouter",
+        "url": "https://openrouter.ai/api/v1/models",
+        "parse": _parse_openrouter,
+    },
+]
+
+
+def fetch_and_save_prices(silent=False):
+    """Try each price source in order; save and return cache dict on first success."""
+    errors = []
+    for src in _PRICE_SOURCES:
+        try:
+            with urllib.request.urlopen(src["url"], timeout=15) as resp:
+                raw = json.loads(resp.read().decode("utf-8"))
+            models = src["parse"](raw)
+            if not models:
+                errors.append(f"{src['name']}: returned 0 Claude models")
+                continue
+            if not silent:
+                print(f"  Fetched from {src['name']} ({len(models)} Claude models).")
+            cache = {
+                "fetched_at": now().isoformat(),
+                "source": src["url"],
+                "source_name": src["name"],
+                "models": models,
+            }
+            path = price_cache_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(cache, indent=2), encoding="utf-8")
+            return cache
+        except Exception as exc:
+            errors.append(f"{src['name']}: {exc}")
+    if not silent:
+        script = pathlib.Path(__file__).name
+        for err in errors:
+            print(f"  {err}", file=sys.stderr)
+        print(f"  All sources failed. To retry: python {script} prices --refresh", file=sys.stderr)
+    return None
 
 
 def get_prices(auto_fetch=True):
-    """Return (models_dict, age_days). models_dict is None when unavailable."""
+    """Return (models_dict, age_days, source_name). Falls back to bundled prices when network unavailable."""
     cache = _load_raw_price_cache()
     if cache is None:
         if not auto_fetch:
-            return None, None
+            return BUNDLED_PRICES, None, "bundled"
         cache = fetch_and_save_prices(silent=True)
         if cache is None:
-            return None, None
+            return BUNDLED_PRICES, None, "bundled"
     try:
         age_days = (now() - parse_time(cache["fetched_at"])).days
-        return cache.get("models", {}), age_days
+        source_name = cache.get("source_name", "unknown")
+        return cache.get("models", BUNDLED_PRICES), age_days, source_name
     except (KeyError, ValueError):
-        return None, None
+        return BUNDLED_PRICES, None, "bundled"
 
 
 def estimate_cost(by_model, prices):
@@ -445,12 +516,16 @@ def run_view(session):
         print("Prices:     /goal prices")
     else:
         state["usage"], state["by_model"] = read_usage(session, state)
-        prices, age_days = get_prices(auto_fetch=True)
+        prices, age_days, source_name = get_prices(auto_fetch=True)
         cost = estimate_cost(state["by_model"], prices)
         print(render_status(state, now(), cost=cost))
-        warning = stale_warning(age_days)
-        if warning:
-            print(f"\nNote: {warning}")
+        if source_name == "bundled":
+            script = pathlib.Path(__file__).name
+            print(f"\nNote: Using bundled price table. For live prices: python {script} prices --refresh")
+        else:
+            warning = stale_warning(age_days)
+            if warning:
+                print(f"\nNote: {warning}")
         status = state["status"]
         if status in ("complete", "budget_limited", "stall"):
             print("\nThis goal is finished. Run /goal clear to remove it, or /goal edit <new objective> to start another.")
@@ -522,7 +597,7 @@ def run_complete(session, evidence):
     state["usage"], state["by_model"] = read_usage(session, state)
     end_state(state, "complete", evidence.strip(), at)
     write_state(session, state)
-    prices, _ = get_prices(auto_fetch=False)
+    prices, _, _src = get_prices(auto_fetch=False)
     cost = estimate_cost(state["by_model"], prices)
     print("Goal complete.")
     print(render_status(state, at, cost=cost))
@@ -531,18 +606,15 @@ def run_complete(session, evidence):
 def run_prices(refresh=False):
     """Show cached price table, optionally refreshing first."""
     if refresh:
-        print("Fetching latest prices from LiteLLM...", flush=True)
+        print("Fetching latest prices...", flush=True)
         cache = fetch_and_save_prices(silent=False)
         if cache is None:
             raise SystemExit(1)
-        print(f"Prices updated ({len(cache['models'])} Claude models).")
-    prices, age_days = get_prices(auto_fetch=False)
-    if prices is None:
-        script = pathlib.Path(__file__).name
-        print(f"No price cache found. Run: python {script} prices --refresh")
-        return
-    age_str = f"{age_days}d old" if age_days is not None else "unknown age"
-    print(f"Price cache: {age_str} | source: LiteLLM model index")
+        src = cache.get("source_name", "unknown")
+        print(f"Prices updated ({len(cache['models'])} Claude models, source: {src}).")
+    prices, age_days, source_name = get_prices(auto_fetch=False)
+    age_str = f"{age_days}d old" if age_days is not None else "bundled"
+    print(f"Price cache: {age_str} | source: {source_name}")
     warning = stale_warning(age_days)
     if warning:
         print(f"Note: {warning}")

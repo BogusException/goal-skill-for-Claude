@@ -4,6 +4,27 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ---
 
+## [1.2.0] - 2026-11-16
+
+### Added
+
+- **Multi-source pricing with offline fallback.** Price fetching now tries three sources in order: LiteLLM's model pricing JSON, then the OpenRouter API, then a bundled static table compiled at release time. The first source that returns valid data wins. The bundled table (`BUNDLED_PRICES`) guarantees cost tracking works even with no network access.
+- **`source_name` in price cache.** The cache file now records which source provided the data (`LiteLLM`, `OpenRouter`, or `bundled`). `/goal prices` and `/goal prices --refresh` show the source name in the header line.
+- **Bundled prices note.** When the bundled table is active (no network, no cached data), `/goal` status output shows a one-line note pointing to the refresh command instead of a silent stale-cache warning.
+
+### Changed
+
+- **`get_prices` return type.** Now returns a 3-tuple `(models, age_days, source_name)` instead of a 2-tuple. `source_name` is `"bundled"` when the static fallback is used, otherwise the network source name from the cache.
+- **`run_prices` output.** "Fetching latest prices from LiteLLM..." changed to "Fetching latest prices..." because the source is not known until the fetch attempt completes. The result line reports the actual source used.
+- **`get_prices` never returns `None` for models.** It previously returned `(None, None)` when no cache existed and `auto_fetch` was `False`. It now returns `(BUNDLED_PRICES, None, "bundled")` so cost estimation always has a price table.
+
+### Decisions recorded
+
+- **Why three sources?** LiteLLM and OpenRouter have different coverage and update cadences. Neither is guaranteed to be available. The bundled table is a last resort: it's accurate at release time and prevents a total cost-tracking blackout on air-gapped or offline machines. The order (LiteLLM first, OpenRouter second, bundled last) reflects decreasing freshness preference.
+- **Why not cache the source name on every lookup?** `source_name` is only written when a network fetch succeeds and updates the cache. Reads from an existing cache return the `source_name` stored at fetch time. Bundled fallbacks never write to disk, so they don't pollute the cache state.
+
+---
+
 ## [1.1.0] - 2026-11-16
 
 ### Added
