@@ -30,6 +30,10 @@ Improvements after the 1:1 replication. Ordered by value.
 - [ ] **10. Cross-session resume.** Test and document goal behavior after `claude --resume`.
 - [ ] **11. Port to global skills.** Copy the skill to `~/.claude/skills/goal` and make the project path logic work from any repo.
 
+## New skills to create
+
+- [ ] **Skill based on Facebook reel** https://www.facebook.com/reel/979431751602852 . Video content not reviewed yet (Facebook blocks automated fetch). Needed to start: the skill name and a short description of what the reel shows, or a transcript or screen recording. Then draft `SKILL.md`, scripts, tests, install script (per the install work in progress), and docs entry.
+
 ## Done
 
 - [x] Initial scaffold
