@@ -1,9 +1,0 @@
-{
-  "features": {
-    "goals": true
-  },
-  "goals": {
-    "max_goal_token_budget": null,
-    "max_continuations": 100
-  }
-}

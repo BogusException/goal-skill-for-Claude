@@ -1,127 +1,25 @@
-# Python
-.venv/
-venv/
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
-dist/
-build/
-*.egg-info/
-.eggs/
+.venv/
 .pytest_cache/
-.mypy_cache/
-.ruff_cache/
-htmlcov/
-.coverage
-coverage.xml
-
-# Environment & secrets
 .env
 .env.*
 !.env.example
-secrets/
-
-# Logs & runtime
-*.log
-logs/
-*.db
-*.db-journal
-*.sqlite
-*.sqlite3
-
-# Claude Code responses (never commit content)
-responses/
-
-# Private filesystem backups at any depth
-**/backups/
-
-# OS
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# Editors
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.cursor/
-
-# Agent-local state and credentials
-.claude/settings.local.json
-.claude/goals/
-.codex/auth.json
-.codex/sessions/
-.codex/log/
-
-# mkproj project identity (per-project, not for version control)
-.mkproj
-
-# Private keys and credential containers
 *.pem
 *.key
 *.p12
 *.pfx
-*.crt
-*.cer
-*.der
-*.jks
-*.keystore
-id_rsa
-id_ed25519
-id_ecdsa
-id_dsa
-*.pub.key
-
-# Credential and secret files (common patterns)
-*credentials*
-*credential*
-*.credentials
 secrets.json
-secrets.yaml
-secrets.yml
-secret.json
-secret.yaml
-secret.yml
-*_secret*
-*_secrets*
+*credentials*
 *api_key*
-*apikey*
-*api-key*
 *.token
 *access_token*
-*refresh_token*
-*auth_token*
-*bearer_token*
 *service_account*.json
-*serviceaccount*.json
-*gcp-key*.json
-*firebase-adminsdk*.json
-*oauth_token*
-*.htpasswd
-
-# Cloud provider credential files
-.aws/credentials
-.aws/config
+.aws/
 .azure/
-gcloud-service-key.json
-kubeconfig
-*.kubeconfig
-
-# Password and vault files
-*.vault
-.vault_pass
-vault_password_file
-*vault*password*
-
-# CI/CD and environment-specific secrets
-.npmrc
-.yarnrc
-.pip/pip.conf
-pip.ini
-netrc
-.netrc
-*_rsa
-*_dsa
+.DS_Store
+.vscode/
+.idea/
+*.swp
+.goal_state/
+goals/
