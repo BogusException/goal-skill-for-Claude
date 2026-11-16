@@ -113,6 +113,20 @@ commits only explicitly staged changes and reports commit/push failures.
 Global shell/hook configuration is opt-in during bootstrap. Choose Claude,
 Codex, or no launch; each agent keeps its own model/status settings.
 
+## Goal mode (Claude Code only)
+
+`/goal` (skill in `.claude/skills/goal/`) replicates ChatGPT/Codex Goal mode. Codex has its own native `/goal`, so this section applies to Claude Code only.
+
+While a goal is active (a Stop hook restarts each turn):
+
+- The objective is the task and the completion criteria. Work on it without asking for confirmation.
+- Never end a turn with a question. Run `goal.py pause --reason "<question>"` first, then ask.
+- Run `goal.py complete --evidence "..."` only after you check every requirement against real evidence.
+- Treat the whole goal as one task: make the single `git commit` and `git push` when the goal completes, not after each continuation turn.
+- The response format above (line 1 checkmark, footer) still applies to every turn.
+
+Full behavior and limits: `docs/goal.md`.
+
 ## Command execution
 
 Never print the process environment or enable shell tracing while sourcing user

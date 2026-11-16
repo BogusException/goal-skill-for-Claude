@@ -35,6 +35,9 @@ Add project-specific entries as the project grows.
 **G**
 
 **Getting help** -- troubleshooting.md §3
+**Goal mode (/goal), commands** -- goal.md §1
+**Goal mode, design decisions** -- goal.md §3
+**Goal mode, install** -- goal.md §5
 **Git remotes, adding** -- (see project-bootstrap docs/adding-remotes.md)
 
 **I**

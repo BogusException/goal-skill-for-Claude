@@ -51,6 +51,7 @@ desktop.ini
 
 # Agent-local state and credentials
 .claude/settings.local.json
+.claude/goals/
 .codex/auth.json
 .codex/sessions/
 .codex/log/
