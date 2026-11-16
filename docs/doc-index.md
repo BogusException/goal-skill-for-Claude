@@ -42,6 +42,8 @@ Add project-specific entries as the project grows.
 
 **I**
 
+**Install, all skills (install-all.sh)** -- installing-skills.md §1
+**Install, per-skill version rules** -- installing-skills.md §2
 **Install, prerequisites** -- install.md §1
 **Install, setup steps** -- install.md §2
 

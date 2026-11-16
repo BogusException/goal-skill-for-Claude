@@ -28,7 +28,9 @@ Improvements after the 1:1 replication. Ordered by value.
 - [ ] **8. Objective from file.** `/goal @path/to/spec.md` for objectives over 4,000 characters.
 - [ ] **9. Worktree isolation.** Offer to start each goal in its own git worktree so parallel goals do not edit the same files.
 - [ ] **10. Cross-session resume.** Test and document goal behavior after `claude --resume`.
-- [ ] **11. Port to global skills.** Copy the skill to `~/.claude/skills/goal` and make the project path logic work from any repo.
+- [ ] **11. Make the global copy of `/goal` work from any repo.** `./install.sh` already copies the skill to `~/.claude/skills/goal` (version 1.0.0). Still open: `goal.py` finds its state and config from its own location (`parents[3]`), so a global copy needs `CLAUDE_PROJECT_DIR` or a different path rule, and the Stop hook entry must be added to `~/.claude/settings.json` (backup first, `--wire-hooks` flag for the installer).
+- [ ] **12. Installer `--wire-hooks`.** Let a skill declare hooks and permissions in a manifest, and have `install.sh` merge them into `~/.claude/settings.json` after a verified backup.
+- [ ] **13. Installer for non-skill assets.** Same version and timestamp logic for agents and commands.
 
 ## New skills to create
 
@@ -39,3 +41,4 @@ Improvements after the 1:1 replication. Ordered by value.
 - [x] Initial scaffold
 - [x] `/goal` skill, state script, Stop-hook loop, config keys, 23 unit tests (2026-11-16)
 - [x] CLAUDE.md Goal mode section, `docs/goal.md`
+- [x] Per-skill `install.sh` / `install.py` (version, content hash, UTC timestamps, backup, `--check`, `--dry-run`, `--force`) and root `install-all.sh` / `install_all.py`; shared code in `lib/skill_installer.py`; 16 tests (2026-11-16)
