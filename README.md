@@ -74,7 +74,7 @@ Running `/goal` after a session reports estimated cost alongside tokens and time
 **Refresh prices on demand:**
 
 ```bash
-python goal.py --refresh-prices
+python goal.py prices --refresh
 ```
 
 This fetches the latest pricing data and updates the local cache. Run it after Anthropic price changes or when you want to verify accuracy.
@@ -122,3 +122,5 @@ The token budget can also be set via the environment variable `CLAUDE_GOAL_MAX_T
 ## Background
 
 This skill replicates the [ChatGPT Goal mode](https://learn.chatgpt.com) in Claude Code's hook system. The Stop hook is the key mechanism: it runs after every turn and returns a `decision: block` response that injects a continuation prompt, keeping Claude working without user input.
+
+It is not an exact clone. Claude Code's architecture imposes real constraints, and a few behaviors are intentionally different. See [docs/differences-from-chatgpt.md](docs/differences-from-chatgpt.md) for the full breakdown.
