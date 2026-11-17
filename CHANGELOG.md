@@ -4,6 +4,35 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ---
 
+## [1.3.0] - 2026-11-16
+
+### Added
+
+- **Activity log.** Each turn, Claude calls `goal.py log-entry --note "<one sentence>"` as the first action. `/goal log` shows the full per-turn history with timestamps. `/goal` (status view) shows the last 5 entries inline when a goal is active. This addresses the main frustration with long-running goals: no visibility into what actually happened across turns.
+- **Goal history.** When you run `/goal clear`, the goal is appended to `~/.claude/goal-history.jsonl`. `/goal history` shows the last 20 cleared goals with status, turn count, creation time, and objective. Cross-session visibility into past work.
+- **Dollar cost budget.** New config key `goals.max_cost_usd` in `.claude/goal-config.json`. When set, the stop hook checks estimated cost after each turn and triggers a budget-limited wrap-up if the threshold is reached. Complements the existing token budget for users who prefer to cap by dollars rather than tokens.
+- **`/goal history` and `/goal log` slash commands.** Both are now routed through `run_slash`, so they work when typed as `/goal history` or `/goal log`.
+- **`turns` field in goal state.** New array in the state JSON recording per-turn log entries. Old state files without this field are handled gracefully.
+
+### Fixed
+
+- **`/goal prices` via slash command was broken.** `prices` was not in `SLASH_BARE_COMMANDS` and not handled in `run_slash`, so `/goal prices` fell through to `run_set` and tried to create a goal with the objective "prices". Fixed by adding explicit handling in `run_slash`.
+
+### Changed
+
+- **`/goal prices` now filters to canonical model names by default.** The LiteLLM cache contains 415+ Claude model entries including provider-prefixed variants (`anthropic/claude-...`, `aihubmix/claude-...`, etc.). The default view now shows only models whose names start with `claude-` (25 entries). Pass `--all` or type `/goal prices --all` to see everything. This makes the common case readable without losing access to the full table.
+- **`run_view` always shows the price source.** Previously the source name appeared only when bundled or stale. Now it appears as `Prices: LiteLLM (0d old)` for all cached sources.
+- **`run_view` (no active goal) shows updated command list.** Added `History: /goal history` and updated the prices hint to show `[--refresh] [--all]`.
+- **`build_work_prompt` updated.** Rule 1 is now "log this turn first": `log-entry --note "..."`. Original rules shift to 2-6. The log-entry call is described as a single Bash command to minimize overhead.
+
+### Decisions recorded
+
+- **Why append history on `clear` only?** `complete` leaves the state file on disk; the user may still want to inspect it before clearing. Recording history on `clear` captures everything cleanly -- completed, abandoned, and budget-limited goals all pass through it. No double-write problem.
+- **Why is log-entry rule 1 in the work prompt?** Claude reliably executes the first rule. Putting logging at the end risks it being skipped if the turn ends unexpectedly. Recording intent ("what I will do") at the start is more robust than recording outcome at the end.
+- **Why not auto-append history when a goal budget-limits or stalls?** Those states are recoverable -- the user can resume or edit the objective. The goal isn't "done" yet. Clearing is the definitive cleanup action and the right trigger for history.
+
+---
+
 ## [1.2.0] - 2026-11-16
 
 ### Added

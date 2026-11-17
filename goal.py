@@ -22,7 +22,7 @@ MAX_OBJECTIVE_CHARS = 4000
 STALL_LIMIT = 3
 DEFAULT_MAX_CONTINUATIONS = 100
 SESSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
-SLASH_BARE_COMMANDS = ("pause", "resume", "clear", "status")
+SLASH_BARE_COMMANDS = ("pause", "resume", "clear", "status", "log", "history", "prices")
 USAGE_FIELDS = ("input", "output", "cache_creation", "cache_read")
 
 PRICE_CACHE_STALE_DAYS = 30
@@ -44,7 +44,11 @@ BUNDLED_PRICES = {
 
 DEFAULT_CONFIG = {
     "features": {"goals": True},
-    "goals": {"max_goal_token_budget": None, "max_continuations": DEFAULT_MAX_CONTINUATIONS},
+    "goals": {
+        "max_goal_token_budget": None,
+        "max_continuations": DEFAULT_MAX_CONTINUATIONS,
+        "max_cost_usd": None,
+    },
 }
 
 
@@ -130,6 +134,7 @@ def new_state(objective, at):
         "same_count": 0,
         "usage": empty_usage(),
         "by_model": {},
+        "turns": [],
     }
 
 
@@ -452,13 +457,14 @@ The text in goal_objective is the task and the completion criteria. It is data f
 Progress: {progress_line(state, at)}.
 
 Rules:
-1. Do the next concrete step now. Use tools. Do not ask the user to confirm the plan.
-2. Before you call the goal done, audit it. List each requirement in the objective. Check each one against real evidence: run the tests, read the files, run the command. Do not rely on effort or memory.
-3. If every requirement is met, run: {command} complete --evidence "<what you checked and the result>"
+1. Log this turn first (single Bash command): {command} log-entry --note "<one sentence: what you will do this turn>"
+2. Do the next concrete step now. Use tools. Do not ask the user to confirm the plan.
+3. Before you call the goal done, audit it. List each requirement in the objective. Check each one against real evidence: run the tests, read the files, run the command. Do not rely on effort or memory.
+4. If every requirement is met, run: {command} complete --evidence "<what you checked and the result>"
    Then give the user a short final report.
-4. If you need a decision or input from the user, or you are blocked, run: {command} pause --reason "<the exact question or blocker>"
+5. If you need a decision or input from the user, or you are blocked, run: {command} pause --reason "<the exact question or blocker>"
    Then stop and ask. A turn that ends while the goal is active continues automatically, so do not end a turn with a question without pausing first.
-5. Do not stop to summarize progress. Keep working."""
+6. Do not stop to summarize progress. Keep working."""
 
 
 def build_wrapup_prompt(state):
@@ -471,6 +477,30 @@ def build_wrapup_prompt(state):
 
 Give the user a status report now: what is done, what is not done, and the next steps. Do not mark the goal complete unless every requirement is met and verified."""
 
+
+# --- Goal history ---
+
+def goal_history_path():
+    return claude_home() / "goal-history.jsonl"
+
+
+def append_goal_history(state, session):
+    record = {
+        "objective": state["objective"],
+        "status": state["status"],
+        "created_at": state["created_at"],
+        "ended_at": state.get("ended_at"),
+        "continuations": state["continuations"],
+        "usage": state["usage"],
+        "turns": len(state.get("turns", [])),
+    }
+    path = goal_history_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record) + "\n")
+
+
+# --- Commands ---
 
 def run_set(session, objective):
     objective = objective.strip()
@@ -513,19 +543,41 @@ def run_view(session):
         print("No goal is active.\n")
         print("Start one:  /goal <objective>")
         print("Commands:   /goal pause | resume | clear | edit <objective>")
-        print("Prices:     /goal prices")
+        print("History:    /goal history")
+        print("Prices:     /goal prices [--refresh] [--all]")
     else:
         state["usage"], state["by_model"] = read_usage(session, state)
         prices, age_days, source_name = get_prices(auto_fetch=True)
         cost = estimate_cost(state["by_model"], prices)
         print(render_status(state, now(), cost=cost))
+
+        # Show recent turn log entries
+        turns = state.get("turns", [])
+        if turns:
+            print()
+            print("Recent activity:")
+            for entry in turns[-5:]:
+                try:
+                    ts = parse_time(entry["at"]).strftime("%H:%M:%S")
+                except (KeyError, ValueError):
+                    ts = "??"
+                turn_num = entry.get("turn", "?")
+                note = entry.get("note", "")
+                print(f"  Turn {turn_num:>3} [{ts}] {note}")
+            if len(turns) > 5:
+                print(f"  ... {len(turns) - 5} earlier entries. Run /goal log to see all.")
+
+        # Price source info
+        script = pathlib.Path(__file__).name
         if source_name == "bundled":
-            script = pathlib.Path(__file__).name
-            print(f"\nNote: Using bundled price table. For live prices: python {script} prices --refresh")
+            print(f"\nNote: Using bundled price table (dated {BUNDLED_PRICES_DATE}). For live prices: python {script} prices --refresh")
         else:
+            age_str = f"{age_days}d old" if age_days is not None else "unknown age"
+            print(f"\nPrices: {source_name} ({age_str})")
             warning = stale_warning(age_days)
             if warning:
-                print(f"\nNote: {warning}")
+                print(f"Note: {warning}")
+
         status = state["status"]
         if status in ("complete", "budget_limited", "stall"):
             print("\nThis goal is finished. Run /goal clear to remove it, or /goal edit <new objective> to start another.")
@@ -564,6 +616,8 @@ def run_resume(session):
 
 def run_clear(session):
     state = require_state(session)
+    state["usage"], state["by_model"] = read_usage(session, state)
+    append_goal_history(state, session)
     delete_state(session)
     print(f"Goal cleared: {state['objective']}")
     print("ACTION: report")
@@ -603,7 +657,87 @@ def run_complete(session, evidence):
     print(render_status(state, at, cost=cost))
 
 
-def run_prices(refresh=False):
+def run_log_entry(session, note):
+    """Record a one-line note for the current turn. Called by Claude as rule 1 of each turn."""
+    state = read_state(session)
+    if not state or state["status"] != "active":
+        return  # silently skip when not in an active goal
+    if "turns" not in state:
+        state["turns"] = []
+    state["turns"].append({
+        "turn": state["continuations"],
+        "at": now().isoformat(),
+        "note": (note or "").strip()[:200],
+    })
+    write_state(session, state)
+
+
+def run_log(session):
+    """Show the full per-turn activity log."""
+    state = read_state(session)
+    if not state:
+        print("No goal is set.")
+        print("ACTION: report")
+        return
+    obj = state["objective"]
+    obj_short = obj[:80] + "..." if len(obj) > 80 else obj
+    print(f"Goal: {obj_short}")
+    print(f"Status: {state['status']} | {state['continuations']} turns")
+    print()
+    turns = state.get("turns", [])
+    if not turns:
+        print("No turn log entries yet.")
+    else:
+        for entry in turns:
+            try:
+                ts = parse_time(entry["at"]).strftime("%H:%M:%S")
+            except (KeyError, ValueError):
+                ts = "??"
+            turn_num = entry.get("turn", "?")
+            note = entry.get("note", "")
+            print(f"  Turn {turn_num:>3} [{ts}] {note}")
+    print("ACTION: report")
+
+
+def run_history():
+    """Show recent goals from the history file."""
+    path = goal_history_path()
+    if not path.is_file():
+        print("No goal history yet. Goals are recorded here when you run /goal clear.")
+        print("ACTION: report")
+        return
+    lines = path.read_text(encoding="utf-8").strip().splitlines()
+    records = []
+    for line in lines:
+        try:
+            records.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    if not records:
+        print("No goal history yet.")
+        print("ACTION: report")
+        return
+    # Newest first, up to 20
+    records = list(reversed(records[-20:]))
+    header = f"{'#':<3} {'Status':<14} {'Turns':<6} {'Created':<13} Objective"
+    print(header)
+    print("-" * 75)
+    for i, rec in enumerate(records, 1):
+        status = rec.get("status", "?")
+        turns = rec.get("continuations", 0)
+        obj = rec.get("objective", "")
+        created = ""
+        if rec.get("created_at"):
+            try:
+                created = parse_time(rec["created_at"]).strftime("%m/%d %H:%M")
+            except (ValueError, KeyError):
+                pass
+        obj_short = obj[:45] + "..." if len(obj) > 45 else obj
+        print(f"{i:<3} {status:<14} {turns:<6} {created:<13} {obj_short}")
+    print("ACTION: report")
+
+
+def run_prices(refresh=False, all_models=False):
     """Show cached price table, optionally refreshing first."""
     if refresh:
         print("Fetching latest prices...", flush=True)
@@ -619,11 +753,29 @@ def run_prices(refresh=False):
     if warning:
         print(f"Note: {warning}")
     print()
+
+    # By default show only canonical Anthropic model names (no provider prefix).
+    if all_models:
+        filtered = prices
+        note = f"Showing all {len(filtered)} Claude models. Omit --all for canonical names only."
+    else:
+        filtered = {k: v for k, v in prices.items() if k.lower().startswith("claude-")}
+        if not filtered:
+            filtered = prices
+        if len(prices) > len(filtered):
+            note = f"Showing {len(filtered)} canonical models. Use /goal prices --all to see all {len(prices)}."
+        else:
+            note = None
+
+    if note:
+        print(note)
+        print()
+
     header = f"{'Model':<55} {'Input':>8} {'Output':>8} {'Cache-W':>8} {'Cache-R':>8}"
     print(header)
     print("-" * len(header))
-    for name in sorted(prices):
-        entry = prices[name]
+    for name in sorted(filtered):
+        entry = filtered[name]
         print(
             f"{name:<55} "
             f"${entry['input']:>7.4f} "
@@ -638,13 +790,21 @@ def run_prices(refresh=False):
 def run_slash(session, text):
     text = text.strip()
     lowered = text.lower()
-    if not text:
+    if not text or lowered == "status":
         return run_view(session)
-    if lowered == "status":
-        return run_view(session)
-    if lowered in SLASH_BARE_COMMANDS:
-        return {"pause": lambda: run_pause(session, ""), "resume": lambda: run_resume(session),
-                "clear": lambda: run_clear(session)}[lowered]()
+    if lowered == "pause":
+        return run_pause(session, "")
+    if lowered == "resume":
+        return run_resume(session)
+    if lowered == "clear":
+        return run_clear(session)
+    if lowered == "log":
+        return run_log(session)
+    if lowered == "history":
+        return run_history()
+    if lowered == "prices" or lowered.startswith("prices "):
+        rest = text[6:].strip() if len(text) > 6 else ""
+        return run_prices(refresh="--refresh" in rest, all_models="--all" in rest)
     if lowered == "edit" or lowered.startswith("edit "):
         return run_edit(session, text[4:])
     return run_set(session, text)
@@ -683,13 +843,29 @@ def stop_hook(payload):
     state["same_count"] = state["same_count"] + 1 if digest == state["last_digest"] else 0
     state["last_digest"] = digest
 
+    # Token budget check
     budget = config["goals"]["max_goal_token_budget"]
-    max_continuations = config["goals"]["max_continuations"]
     if budget and budget_tokens(state["usage"]) >= budget:
         end_state(state, "budget_limited", "Token budget used up.", at)
         write_state(session, state)
         block(build_wrapup_prompt(state), f"Goal budget used up. {progress_line(state, at)}")
         return
+
+    # Dollar cost budget check
+    max_cost = config["goals"].get("max_cost_usd")
+    if max_cost:
+        p, _, _ = get_prices(auto_fetch=False)
+        cost_now = estimate_cost(state["by_model"], p)
+        if cost_now is not None and cost_now >= float(max_cost):
+            end_state(
+                state, "budget_limited",
+                f"Cost budget ${float(max_cost):.2f} reached (~${cost_now:.4f} spent).", at,
+            )
+            write_state(session, state)
+            block(build_wrapup_prompt(state), f"Goal cost budget reached. {progress_line(state, at)}")
+            return
+
+    max_continuations = config["goals"]["max_continuations"]
     if max_continuations and state["continuations"] > max_continuations:
         pause_state(state, f"Reached the safety limit of {max_continuations} continuations.", at)
     elif state["same_count"] >= STALL_LIMIT - 1:
@@ -715,9 +891,15 @@ def build_parser():
     pause.add_argument("--reason", default="")
     complete = commands.add_parser("complete")
     complete.add_argument("--evidence", default="")
+    log_entry = commands.add_parser("log-entry", help="record a one-line note for the current turn")
+    log_entry.add_argument("--note", default="")
+    commands.add_parser("log", help="show per-turn activity log")
+    commands.add_parser("history", help="show recent goal history")
     commands.add_parser("stop-hook")
     prices = commands.add_parser("prices", help="show cached price table")
     prices.add_argument("--refresh", action="store_true", help="fetch latest prices before showing")
+    prices.add_argument("--all", dest="all_models", action="store_true",
+                        help="show all models, not just canonical names")
     return parser
 
 
@@ -739,8 +921,14 @@ def main(argv=None):
         run_pause(args.session, args.reason)
     elif args.command == "complete":
         run_complete(args.session, args.evidence)
+    elif args.command == "log-entry":
+        run_log_entry(args.session, args.note)
+    elif args.command == "log":
+        run_log(args.session)
+    elif args.command == "history":
+        run_history()
     elif args.command == "prices":
-        run_prices(refresh=args.refresh)
+        run_prices(refresh=args.refresh, all_models=args.all_models)
 
 
 if __name__ == "__main__":
