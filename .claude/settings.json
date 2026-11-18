@@ -25,7 +25,8 @@
       "Bash(ls *)",
       "Bash(mkdir *)",
       "Bash(touch *)",
-      "Bash(.claude/hooks/*.sh)"
+      "Bash(.claude/hooks/*.sh)",
+      "Bash(.venv/bin/python .claude/skills/goal/goal.py *)"
     ],
     "deny": [
       "Read(**/.env)",
@@ -45,15 +46,35 @@
       {
         "matcher": "Edit|Write",
         "hooks": [
-          {"type": "command", "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/protect-files.sh",        "timeout": 10, "statusMessage": "Checking file protections..."},
-          {"type": "command", "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/warn-large-files.sh",     "timeout": 10, "statusMessage": "Checking for build artifacts..."},
-          {"type": "command", "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/scan-secrets.sh",         "timeout": 10, "statusMessage": "Scanning for secrets..."}
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/protect-files.sh",
+            "timeout": 10,
+            "statusMessage": "Checking file protections..."
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/warn-large-files.sh",
+            "timeout": 10,
+            "statusMessage": "Checking for build artifacts..."
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/scan-secrets.sh",
+            "timeout": 10,
+            "statusMessage": "Scanning for secrets..."
+          }
         ]
       },
       {
         "matcher": "Bash",
         "hooks": [
-          {"type": "command", "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-dangerous-commands.sh", "timeout": 10, "statusMessage": "Checking command safety..."}
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-dangerous-commands.sh",
+            "timeout": 10,
+            "statusMessage": "Checking command safety..."
+          }
         ]
       }
     ],
@@ -61,8 +82,18 @@
       {
         "matcher": "Edit|Write",
         "hooks": [
-          {"type": "command", "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/auto-test.sh",            "timeout": 30, "statusMessage": "Running tests..."},
-          {"type": "command", "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/format-on-save.sh",       "timeout": 10, "statusMessage": "Formatting..."}
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/auto-test.sh",
+            "timeout": 30,
+            "statusMessage": "Running tests..."
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/format-on-save.sh",
+            "timeout": 10,
+            "statusMessage": "Formatting..."
+          }
         ]
       }
     ],
@@ -70,7 +101,12 @@
       {
         "matcher": "",
         "hooks": [
-          {"type": "command", "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh",        "timeout": 10, "statusMessage": "Loading project context..."}
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh",
+            "timeout": 10,
+            "statusMessage": "Loading project context..."
+          }
         ]
       }
     ],
@@ -78,7 +114,11 @@
       {
         "matcher": "",
         "hooks": [
-          {"type": "command", "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/notify.sh",               "timeout": 10}
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/notify.sh",
+            "timeout": 10
+          }
         ]
       }
     ],
@@ -86,8 +126,23 @@
       {
         "matcher": "",
         "hooks": [
-          {"type": "command", "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/save-response.sh",        "timeout": 15, "statusMessage": "Saving response..."},
-          {"type": "command", "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/auto-commit.sh",          "timeout": 30, "statusMessage": "Auto-committing changes..."}
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/save-response.sh",
+            "timeout": 15,
+            "statusMessage": "Saving response..."
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/auto-commit.sh",
+            "timeout": 30,
+            "statusMessage": "Auto-committing changes..."
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/skills/goal/goal-continue.sh",
+            "timeout": 30
+          }
         ]
       }
     ]

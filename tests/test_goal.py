@@ -80,7 +80,7 @@ class SlashParsingTests(GoalTestCase):
 
     def test_empty_args_view_reports_no_goal(self):
         out = self.run_cli("slash", stdin="")
-        self.assertIn("No goal set", out)
+        self.assertIn("No goal is active", out)
         self.assertIn("ACTION: report", out)
 
     def test_pause_word_followed_by_text_is_an_objective(self):
