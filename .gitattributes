@@ -18,3 +18,25 @@
 *.sqlite3 binary
 *.so binary
 *.pyd binary
+
+# Dev-only: excluded from git archive (GitHub "Download ZIP" and release tarballs).
+# These are development scaffolding -- they should never appear in a user download.
+# To add a new dev-only path, append it here. Everything NOT listed ships to users.
+.claude/              export-ignore
+src/                  export-ignore
+responses/            export-ignore
+tasks/                export-ignore
+.env.example          export-ignore
+run.sh                export-ignore
+test.sh               export-ignore
+requirements.txt      export-ignore
+AGENTS.md             export-ignore
+docs/adding-agents.md export-ignore
+docs/api-keys.md      export-ignore
+docs/architecture.md  export-ignore
+docs/customizing.md   export-ignore
+docs/doc-index.md     export-ignore
+docs/install.md       export-ignore
+docs/privacy-and-security.md export-ignore
+docs/running.md       export-ignore
+docs/troubleshooting.md export-ignore
