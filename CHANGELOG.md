@@ -4,6 +4,19 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ---
 
+## [1.3.2] - 2026-11-20
+
+### Fixed: Global installation path resolution and project-directory detection
+
+- **`script_command()` used hardcoded project-relative paths.** The generated command contained `.venv/bin/python` and `.claude/skills/goal/goal.py`, which only work inside the project where the skill was developed. Replaced with `sys.executable` (the interpreter actually running the skill), `pathlib.Path(__file__).resolve()` (the script's real installed path), and `shlex.quote()` for both.
+- **`goal-continue.sh` had a hardcoded absolute path to `goal.py`.** The global Stop hook embedded the installing user's home-directory path, breaking the hook for anyone else. Replaced with `SKILL_DIR` derived from `${BASH_SOURCE[0]}`, so the hook finds `goal.py` beside itself regardless of install location.
+- **`project_dir()` fallback resolved to the skill's install directory.** `pathlib.Path(__file__).resolve().parents[3]` walked three levels up from the script file, which points to `~/.claude` for a global install rather than the active project. Replaced with `pathlib.Path.cwd().resolve()` so the fallback is always the working directory Claude Code launched from.
+- **`install.py` regenerated the old broken `goal-continue.sh` on reinstall.** `_global_goal_continue()` was out of sync with the BASH_SOURCE fix and would overwrite it. Updated to generate the corrected script.
+- **`install.py` `_global_skill_md()` performed a dead command-string substitution.** The source SKILL.md now uses a dynamic path (`${CLAUDE_CONFIG_DIR:-$HOME/.claude}`), so the old text-replacement pattern would silently fail. Removed the command replacement; kept the `allowed-tools` replacement that injects the exact installed path.
+- **SKILL.md invocation used a project-relative `python` and path.** Updated to `python3 "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/goal/goal.py"` with `$ARGUMENTS` placed directly in the heredoc, eliminating the "copy the blockquote" instruction that required the AI to manually transfer the argument text.
+
+---
+
 ## [1.3.0] - 2026-11-16
 
 ### Added

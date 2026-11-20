@@ -234,5 +234,48 @@ class StopHookTests(GoalTestCase):
         self.assertIsNone(self.run_hook())
 
 
+class CommandGenerationTests(GoalTestCase):
+    """Regression tests for script_command() path resolution.
+
+    GoalTestCase.setUp() sets CLAUDE_PROJECT_DIR to a temp directory that has
+    no .claude/skills/goal/ tree, simulating any project that uses the skill
+    from a global install rather than a local copy.
+    """
+
+    def test_script_command_produces_absolute_paths(self):
+        import shlex
+        cmd = self.goal.script_command("test-session")
+        parts = shlex.split(cmd)
+        # Expected shape: [python, goal.py, '--session', session_id]
+        self.assertEqual(len(parts), 4, f"unexpected command shape: {cmd}")
+        python_path, script_path = parts[0], parts[1]
+        self.assertTrue(
+            pathlib.Path(python_path).is_absolute(),
+            f"python interpreter is not absolute: {python_path}",
+        )
+        self.assertTrue(
+            pathlib.Path(script_path).is_absolute(),
+            f"script path is not absolute: {script_path}",
+        )
+
+    def test_script_command_does_not_use_project_relative_venv(self):
+        import shlex
+        cmd = self.goal.script_command("test-session")
+        python_path = shlex.split(cmd)[0]
+        self.assertFalse(
+            python_path.startswith(".venv"),
+            f"python path must not be a relative .venv reference: {python_path}",
+        )
+
+    def test_script_command_does_not_use_relative_script_path(self):
+        import shlex
+        cmd = self.goal.script_command("test-session")
+        script_path = shlex.split(cmd)[1]
+        self.assertFalse(
+            script_path.startswith("."),
+            f"script path must not be relative: {script_path}",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
