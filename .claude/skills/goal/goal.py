@@ -54,7 +54,7 @@ DEFAULT_CONFIG = {
 
 def project_dir():
     env = os.environ.get("CLAUDE_PROJECT_DIR")
-    return pathlib.Path(env) if env else pathlib.Path(__file__).resolve().parents[3]
+    return pathlib.Path(env).resolve() if env else pathlib.Path.cwd().resolve()
 
 
 def claude_home():
