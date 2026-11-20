@@ -33,6 +33,24 @@ Everything under responses/ is private and git-ignored, including internal docum
 
 **Suggestions:** If a better approach exists, say so in one line before proceeding. Do not implement it without a yes.
 
+## Release workflow
+
+After completing any change to `.claude/skills/goal/goal.py`:
+
+1. Bump `VERSION` in goal.py using semantic versioning:
+   - Patch (1.x.Y): bug fixes, no new user-visible subcommands or behavior
+   - Minor (1.X.0): new subcommands, new flags, new user-visible behavior
+2. Add a `## [VERSION] - DATE` section to `CHANGELOG.md` describing the change.
+3. Run `./release.sh` -- it runs tests, stamps the CRC, commits, pushes, and creates the GitHub release.
+
+Do not skip `./release.sh` and manually push. It is the single source of truth for cutting a release.
+
+Always sync the global installation after release:
+```bash
+cp .claude/skills/goal/goal.py ~/.claude/skills/goal/goal.py
+cp .claude/skills/goal/SKILL.md ~/.claude/skills/goal/SKILL.md
+```
+
 ## Commands
 
 ### Install dependencies (venv must be active)
