@@ -1,23 +1,16 @@
-# Documentation Index
+# Documentation index
 
-Alphabetical index of topics for this project.
-Each entry references the relevant doc file and section number (never a page number).
-Add project-specific entries as the project grows.
+Alphabetical index of topics for this project. Each entry references the relevant doc file and section number.
 
 ---
 
 **A**
 
-**API keys (required)** -- api-keys.md §1
-**API keys (optional)** -- api-keys.md §2
-**Agents, adding** -- adding-agents.md §2
-**Agent inventory** -- adding-agents.md §1
 **Architecture overview** -- architecture.md §1
 
 **C**
 
 **Claude Code boundaries** -- privacy-and-security.md §4
-**Commands, common** -- running.md §2
 **Components** -- architecture.md §2
 **Configuration** -- customizing.md §1
 
@@ -25,30 +18,29 @@ Add project-specific entries as the project grows.
 
 **Data flow** -- architecture.md §3
 **Data handled (privacy)** -- privacy-and-security.md §1
-**Dependencies** -- architecture.md §4
+**Differences from ChatGPT Goal mode** -- differences-from-chatgpt.md
 
 **E**
 
-**Environment modes** -- running.md §3
+**Environment variables** -- customizing.md §3
 **Extension points** -- customizing.md §2
+**External dependencies** -- architecture.md §4
 
 **G**
 
 **Getting help** -- troubleshooting.md §3
-**Git remotes, adding** -- (see project-bootstrap docs/adding-remotes.md)
+**Goal commands** -- goal.md §1
 
 **I**
 
 **Install, prerequisites** -- install.md §1
-**Install, setup steps** -- install.md §2
-
-**K**
-
-**Key rotation** -- api-keys.md §3
+**Install, automatic** -- install.md §2
+**Install, manual** -- install.md §4
+**Install, verifying** -- install.md §5
 
 **L**
 
-**Logs** -- troubleshooting.md §2
+**Logs and state files** -- troubleshooting.md §2
 
 **P**
 
@@ -61,7 +53,8 @@ Add project-specific entries as the project grows.
 
 **R**
 
-**Running the project** -- running.md §1
+**Running** -- running.md §1
+**Requirements verification** -- customizing.md §2
 
 **S**
 
@@ -74,4 +67,4 @@ Add project-specific entries as the project grows.
 
 **V**
 
-**Verifying install** -- install.md §3
+**Verifying install** -- install.md §5

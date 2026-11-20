@@ -1,32 +1,32 @@
 # Running
 
-## 1. Quick start
+## Quick start
 
-*The single command that gets the project running from a clean terminal.*
+Type `/goal <objective>` in Claude Code. Claude starts working immediately.
 
-```bash
-source .venv/bin/activate && bash run.sh
+```
+/goal make all tests pass and push to main
 ```
 
-*Update the command above if this project starts differently.*
+The goal persists until Claude completes it, you pause it, or a limit is reached. You can close Claude Code and come back -- the goal resumes on your next message.
 
-## 2. Common tasks
-
-*The commands a developer reaches for every day. Keep this table current.*
+## Common tasks
 
 | Task | Command |
 |------|---------|
-| Run tests | `bash test.sh` |
-| Lint | (e.g. `ruff check .`) |
-| Format | (e.g. `ruff format .`) |
-| Build | (e.g. `python build.py`) |
-| Deploy | (e.g. `fly deploy`) |
+| Check goal status | `/goal` |
+| Pause the loop | `/goal pause` |
+| Resume after pause | `/goal resume` |
+| Replace the objective | `/goal edit <new objective>` |
+| Delete the goal | `/goal clear` |
+| View turn-by-turn log | `/goal log` |
+| View past goals | `/goal history` |
+| Check token prices | `/goal prices` |
+| Refresh price cache | `/goal prices --refresh` |
+| Run tests | `source .venv/bin/activate && python3 -m unittest tests/test_goal.py -v` |
+| Cut a release | `./release.sh` |
+| Install the skill | `python install.py --scope project` or `--scope global` |
 
-## 3. Environment modes
+## Environment modes
 
-*Describe differences between dev, staging, and production if they exist. If this project has no staging environment, say so.*
-
-- **Dev:** Uses `.env` locally. Hot-reload on if applicable.
-- **Staging:** (describe differences -- e.g. points to staging database, uses test API keys)
-- **Prod:** (describe differences -- e.g. `ENV=production` disables debug output)
-- If no modes: This project runs the same way in all environments.
+There are no environment modes. The skill behaves the same way in all contexts. Configuration is per-project via `.claude/goal-config.json` -- see [customizing.md](customizing.md) for the available keys.

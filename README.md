@@ -111,7 +111,7 @@ The token budget can also be set via the environment variable `CLAUDE_GOAL_MAX_T
 .venv/bin/python -m unittest tests.test_goal
 ```
 
-23 unit tests covering state management, token budgeting, continuation logic, and stall detection.
+36 unit tests covering state management, token budgeting, continuation logic, stall detection, and requirements verification.
 
 ## Requirements
 

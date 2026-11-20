@@ -1,29 +1,69 @@
 # Install
 
-*Bootstrap already ran. This doc covers re-setup after a fresh clone, or onboarding a new contributor.*
+## Prerequisites
 
-## 1. Prerequisites
+- [Claude Code](https://claude.ai/code) (any recent version)
+- Python 3.9 or later (standard library only -- no extra packages required)
 
-*List anything beyond what the bootstrap scaffold provides (Python venv, git repo, etc.).*
+No API keys required.
 
-- (example) Python 3.11+
-- (example) PostgreSQL 15 running locally
-- (example) A valid `.env` -- copy `.env.example` and fill in real values
+## Automatic install
 
-## 2. Setup
+Clone or download this repository, then run the installer:
 
-*Step-by-step from clone to running. Number every step so contributors can follow along.*
+```bash
+# Install for a single project (adds the skill to your current project only)
+python install.py --scope project
 
-1. Clone the repo: `git clone <repo-url> && cd <project>`
-2. Create and activate the venv: `python -m venv .venv && source .venv/bin/activate`
-3. Install dependencies: `pip install -r requirements.txt`
-4. Copy env file: `cp .env.example .env` and fill in required keys (see `docs/api-keys.md`)
-5. (Add any project-specific steps here)
+# Install globally (available in every Claude Code project)
+python install.py --scope global
+```
 
-## 3. Verifying the install
+The default scope is `project` when run from inside a project directory, `global` otherwise.
 
-*How does a contributor confirm everything is working before they write a line of code?*
+Restart Claude Code after installation so the Stop hook takes effect.
 
-- Run the test suite: `bash test.sh` -- all tests should pass
-- (example) Hit the health endpoint: `curl http://localhost:8000/health`
-- (example) Run a smoke test: `python main.py --dry-run`
+## What the installer does
+
+**Project install** (`--scope project`):
+- Copies `goal.py`, `goal-continue.sh`, `SKILL.md`, and `price_cache.json` into `<project>/.claude/skills/goal/`
+- Adds the Stop hook entry to `<project>/.claude/settings.json`
+- Adds the `Bash(...)` permission rule to `<project>/.claude/settings.json`
+
+**Global install** (`--scope global`):
+- Copies the same files into `~/.claude/skills/goal/`
+- Patches `~/.claude/settings.json` with the hook and permission
+
+## Manual install
+
+If you prefer not to run the installer, follow these steps.
+
+**1.** Copy `goal.py`, `goal-continue.sh`, and `SKILL.md` into `.claude/skills/goal/` inside your project (or `~/.claude/skills/goal/` for global).
+
+**2.** Add the Stop hook to `.claude/settings.json` under `hooks.Stop[0].hooks`:
+
+```json
+{
+  "type": "command",
+  "command": "$CLAUDE_PROJECT_DIR/.claude/skills/goal/goal-continue.sh",
+  "timeout": 30
+}
+```
+
+For global install, replace `$CLAUDE_PROJECT_DIR/.claude/skills/goal/` with the absolute path to `~/.claude/skills/goal/`.
+
+**3.** Add this to `permissions.allow` in the same file:
+
+```json
+"Bash(.venv/bin/python .claude/skills/goal/goal.py *)"
+```
+
+## Verifying the install
+
+Restart Claude Code, open any project, and type:
+
+```
+/goal
+```
+
+You should see: `No goal is active.` with a list of available commands. If you see an error or nothing happens, check that the Stop hook entry and permission rule were added correctly.

@@ -1,32 +1,37 @@
-# Privacy and Security
+# Privacy and security
 
-## 1. Data handled
+## Data handled
 
-*Describe what personal or sensitive data this project processes, stores, or transmits. If none, say so explicitly.*
+This skill stores no personal data. The only data written to disk is:
 
-- (example) Email addresses collected during signup -- stored in the database, never logged.
-- (example) No personal data handled by this project.
+- **Goal state files** (`.claude/goals/<session_id>.json`): the goal objective text, turn notes written by Claude, token counts, and timestamps. These are created by the user and stored locally. They are git-ignored by default.
+- **Goal history** (`~/.claude/goal-history.jsonl`): a log of cleared goals. Same content as above.
+- **Price cache** (`price_cache.json`): a local copy of publicly available model pricing data fetched from LiteLLM or OpenRouter. No user data.
 
-## 2. Secret management
+None of these files contain credentials, tokens, or identifiable user data beyond what the user typed as a goal objective.
 
-*Which `.env` keys are sensitive, how often they rotate, and what the never-commit rules are.*
+## Secret management
 
-- Sensitive keys: (list them -- e.g. `DATABASE_URL`, `STRIPE_SECRET_KEY`)
-- Rotation policy: (e.g. rotate every 90 days or on team member departure)
-- Rule: never commit `.env` to git. If a secret is exposed, revoke it immediately and create a new one.
+No API keys are required to use this skill. Price fetching calls public, unauthenticated URLs. If network access is unavailable, the bundled price table is used as a fallback.
 
-## 3. Access controls
+The `gh` CLI used by `release.sh` requires GitHub authentication, but that is a development tool, not a runtime dependency of the skill itself.
 
-*Who or what can access this system, and how is that access managed.*
+## File permissions
 
-- (example) Admin panel requires a valid session token.
-- (example) API endpoints are public except `/admin/*` which requires `ADMIN_TOKEN` header.
-- (example) Production database access is restricted to the deploy server by firewall rule.
+State files are created with restrictive permissions:
 
-## 4. Claude Code boundaries
+- `.claude/goals/` directory: `0o700` (owner read/write/execute only)
+- Individual state files: `0o600` (owner read/write only)
+- State writes use an atomic rename pattern (write to temp file, `os.replace()`) to prevent partial reads.
 
-*Any project-specific restrictions on what Claude Code can do beyond the defaults in `.claude/settings.json`.*
+## Claude Code boundaries
 
-- (example) Claude must not read or write files in `data/private/`.
-- (example) Claude must not call external APIs without explicit user instruction.
-- If none, write: No additional restrictions beyond defaults.
+The skill adds one permission rule to `.claude/settings.json`:
+
+```
+Bash(.venv/bin/python .claude/skills/goal/goal.py *)
+```
+
+This allows Claude to run `goal.py` with any arguments but nothing else. Claude cannot use this permission to run arbitrary Python or shell commands. The goal state files are stored under `.claude/goals/`, which is git-ignored and not accessible to external systems.
+
+The Stop hook runs as the system user and has access to the filesystem. It only reads and writes the goal state file and the session transcript. It does not make network calls.
