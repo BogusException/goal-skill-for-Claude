@@ -80,7 +80,9 @@ def _global_goal_continue(skill_path: pathlib.Path) -> str:
 #!/usr/bin/env bash
 # Stop hook for /goal skill (global install -- {skill_path}).
 set -euo pipefail
+SKILL_DIR="$(cd -- "$(dirname -- "${{BASH_SOURCE[0]}}")" && pwd)"
 PROJ="${{CLAUDE_PROJECT_DIR:-$(pwd)}}"
+export CLAUDE_PROJECT_DIR="$PROJ"
 # No goals directory means no goal was ever set.
 [[ -d "$PROJ/.claude/goals" ]] || exit 0
 # Prefer the project venv; fall back to whatever python3 is on PATH.
@@ -89,16 +91,13 @@ if [[ ! -x "$PYTHON" ]]; then
     PYTHON="$(command -v python3 2>/dev/null || command -v python 2>/dev/null || true)"
     [[ -n "$PYTHON" ]] || {{ echo "goal-continue: no python interpreter found" >&2; exit 1; }}
 fi
-exec "$PYTHON" "{skill_path}/goal.py" stop-hook
+exec "$PYTHON" "$SKILL_DIR/goal.py" stop-hook
 """
 
 
 def _global_skill_md(skill_path: pathlib.Path, src_skill_md: pathlib.Path) -> str:
-    """Return SKILL.md with the bash command patched for the global goal.py path."""
+    """Return SKILL.md with the allowed-tools permission patched for the exact global path."""
     text = src_skill_md.read_text(encoding="utf-8")
-    old_cmd = ".venv/bin/python .claude/skills/goal/goal.py"
-    new_cmd = f"python3 {skill_path}/goal.py"
-    text = text.replace(old_cmd, new_cmd)
     old_allowed = "allowed-tools: Bash(.venv/bin/python .claude/skills/goal/goal.py *)"
     new_allowed = f"allowed-tools: Bash(python3 {skill_path}/goal.py *)"
     text = text.replace(old_allowed, new_allowed)

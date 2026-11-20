@@ -1,6 +1,6 @@
 ---
 name: goal
-version: 1.3.0
+version: 1.4.0
 description: Set a persistent goal and keep working across turns until it is verifiably done. Replicates ChatGPT/Codex /goal. Use /goal {objective}, /goal (view), /goal pause, /goal resume, /goal clear, /goal edit {objective}, /goal log, /goal history, /goal prices.
 argument-hint: "[objective | pause | resume | clear | edit {objective} | log | history | prices [--refresh] [--all]]"
 disable-model-invocation: true
@@ -9,16 +9,12 @@ allowed-tools: Bash(.venv/bin/python .claude/skills/goal/goal.py *)
 
 # /goal
 
-The user typed `/goal` with these arguments:
-
-> $ARGUMENTS
-
 ## Step 1: run the state script
 
-Pass the arguments shown in the blockquote above to the script through a quoted heredoc. Copy the blockquoted text exactly -- do not edit, quote, or expand it. If the blockquote is empty, send an empty heredoc.
-
 ```bash
-.venv/bin/python .claude/skills/goal/goal.py --session ${CLAUDE_SESSION_ID} slash <<'GOAL_ARGS_EOF'
+python3 "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/goal/goal.py" \
+    --session "${CLAUDE_SESSION_ID}" slash <<'GOAL_ARGS_EOF'
+$ARGUMENTS
 GOAL_ARGS_EOF
 ```
 
