@@ -4,7 +4,7 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ---
 
-## [1.4.0] - 2026-11-20
+## [1.4.0] - 2026-11-20 — CRC32(goal.py) `E9116B1C`
 
 ### Added: Requirements verification
 
