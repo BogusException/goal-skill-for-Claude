@@ -1,2 +1,0 @@
-# Add project dependencies here.
-# After editing, run: pip install -r requirements.txt
