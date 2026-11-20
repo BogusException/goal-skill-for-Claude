@@ -83,6 +83,18 @@ This fetches the latest pricing data and updates the local cache. Run it after A
 
 The cache is stored beside `goal.py` and is git-ignored by default.
 
+## Requirements verification
+
+Goals can carry machine-checkable requirements. Claude adds them after setting the goal, and `complete` runs every automated check before marking the work done -- if any fail, completion is blocked until they pass.
+
+```
+/goal add all failing tests to the CI suite and make them green
+```
+
+Claude will add requirements like "all tests pass" with the actual check command, run them before completing, and show pass/fail status in `/goal` output. Manual requirements (no shell command) show as MANUAL and don't block completion automatically.
+
+See [docs/goal.md §4](docs/goal.md) for the full details.
+
 ## Safety limits
 
 - **100 continuations** per goal (configurable via `goals.max_continuations` in `.claude/goal-config.json`).

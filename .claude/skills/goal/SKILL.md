@@ -1,6 +1,6 @@
 ---
 name: goal
-version: 1.4.0
+version: 1.4.1
 description: Set a persistent goal and keep working across turns until it is verifiably done. Supports named requirements with automated verification. Replicates ChatGPT/Codex /goal. Use /goal {objective}, /goal (view), /goal pause, /goal resume, /goal clear, /goal edit {objective}, /goal log, /goal history, /goal prices, /goal verify.
 argument-hint: "[objective | pause | resume | clear | edit {objective} | log | history | prices [--refresh] [--all] | verify | add-requirement]"
 disable-model-invocation: true

@@ -19,7 +19,7 @@ import sys
 import tempfile
 import urllib.request
 
-VERSION = "1.4.0"
+VERSION = "1.4.1"
 
 MAX_OBJECTIVE_CHARS = 4000
 STALL_LIMIT = 3

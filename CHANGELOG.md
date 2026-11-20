@@ -4,6 +4,19 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ---
 
+## [1.4.1] - 2026-11-20 — CRC32(goal.py) `5F5E7C24`
+
+### Documentation and housekeeping
+
+- **`docs/goal.md` updated.** Command table now lists all slash commands including `/goal log`, `/goal history`, and `/goal prices`. New §4 documents requirements verification (`add-requirement`, `verify`) with examples. Stale `tasks/todo.md` reference removed.
+- **README.md** gains a "Requirements verification" section explaining the v1.4.0 feature for users reading the project page.
+- **`.gitattributes` cleaned.** Removed five stale `export-ignore` entries for files deleted in the previous release cycle (`run.sh`, `test.sh`, `requirements.txt`, `docs/api-keys.md`, `docs/adding-agents.md`). Added `RELEASING.md` to export-ignore (contributor tooling, not needed in user downloads).
+- **`RELEASING.md` added.** Step-by-step pre-release checklist covering version sync, tests, documentation audit, placeholder grep, file hygiene, release execution, and post-release sync. Required reading before every future release.
+- **Template stubs deleted.** `run.sh`, `test.sh`, `requirements.txt`, `src/`, `tasks/todo.md`, `tasks/skills-manifest.md`, `docs/api-keys.md`, `docs/adding-agents.md` -- all empty scaffold files removed.
+- **Remaining docs filled in.** `docs/architecture.md`, `docs/customizing.md`, `docs/privacy-and-security.md`, `docs/install.md`, `docs/running.md`, `docs/troubleshooting.md`, and `docs/doc-index.md` now contain real project content.
+
+---
+
 ## [1.4.0] - 2026-11-20 — CRC32(goal.py) `E9116B1C`
 
 ### Added: Requirements verification
