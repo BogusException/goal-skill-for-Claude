@@ -441,7 +441,11 @@ def render_status(state, at, cost=None):
 
 
 def script_command(session):
-    return f".venv/bin/python .claude/skills/goal/goal.py --session {session}"
+    import shlex
+    python = shlex.quote(sys.executable)
+    script = shlex.quote(str(pathlib.Path(__file__).resolve()))
+    session = shlex.quote(check_session(session))
+    return f"{python} {script} --session {session}"
 
 
 def build_work_prompt(state, session, at):
