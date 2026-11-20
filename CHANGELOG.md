@@ -4,7 +4,7 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ---
 
-## [1.3.2] - 2026-11-20
+## [1.3.2] - 2026-11-20 — CRC32(goal.py) `243259E8`
 
 ### Fixed: Global installation path resolution and project-directory detection
 

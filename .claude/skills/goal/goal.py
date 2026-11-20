@@ -18,6 +18,8 @@ import sys
 import tempfile
 import urllib.request
 
+VERSION = "1.3.2"
+
 MAX_OBJECTIVE_CHARS = 4000
 STALL_LIMIT = 3
 DEFAULT_MAX_CONTINUATIONS = 100
