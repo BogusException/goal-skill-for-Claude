@@ -277,5 +277,70 @@ class CommandGenerationTests(GoalTestCase):
         )
 
 
+class RequirementsTests(GoalTestCase):
+    def test_add_requirement_stores_in_state(self):
+        self.set_goal()
+        self.run_cli("add-requirement", "--id", "r1", "--description", "tests pass", "--check", "exit 0")
+        reqs = self.goal.read_state(SESSION)["requirements"]
+        self.assertEqual(len(reqs), 1)
+        self.assertEqual(reqs[0]["id"], "r1")
+        self.assertEqual(reqs[0]["description"], "tests pass")
+        self.assertEqual(reqs[0]["check"], "exit 0")
+
+    def test_add_requirement_no_check_is_manual(self):
+        self.set_goal()
+        self.run_cli("add-requirement", "--id", "r1", "--description", "manual review")
+        reqs = self.goal.read_state(SESSION)["requirements"]
+        self.assertIsNone(reqs[0]["check"])
+
+    def test_add_duplicate_id_rejected(self):
+        self.set_goal()
+        self.run_cli("add-requirement", "--id", "r1", "--description", "first", "--check", "exit 0")
+        with self.assertRaises(SystemExit):
+            self.run_cli("add-requirement", "--id", "r1", "--description", "second", "--check", "exit 0")
+
+    def test_verify_pass(self):
+        self.set_goal()
+        self.run_cli("add-requirement", "--id", "r1", "--description", "succeeds", "--check", "exit 0")
+        out = self.run_cli("verify")
+        self.assertIn("[PASS]", out)
+        self.assertIn("ACTION: report", out)
+
+    def test_verify_fail(self):
+        self.set_goal()
+        self.run_cli("add-requirement", "--id", "r1", "--description", "fails", "--check", "exit 1")
+        out = self.run_cli("verify")
+        self.assertIn("[FAIL]", out)
+        self.assertIn("ACTION: work", out)
+
+    def test_verify_no_requirements(self):
+        self.set_goal()
+        out = self.run_cli("verify")
+        self.assertIn("No requirements", out)
+
+    def test_complete_blocked_when_requirement_fails(self):
+        self.set_goal()
+        self.run_cli("add-requirement", "--id", "r1", "--description", "must pass", "--check", "exit 1")
+        with self.assertRaises(SystemExit):
+            self.run_cli("complete", "--evidence", "done")
+
+    def test_complete_succeeds_when_all_pass(self):
+        self.set_goal()
+        self.run_cli("add-requirement", "--id", "r1", "--description", "succeeds", "--check", "exit 0")
+        self.run_cli("complete", "--evidence", "tests pass")
+        self.assertEqual(self.goal.read_state(SESSION)["status"], "complete")
+
+    def test_complete_with_no_requirements_unchanged(self):
+        self.set_goal()
+        self.run_cli("complete", "--evidence", "all done")
+        self.assertEqual(self.goal.read_state(SESSION)["status"], "complete")
+
+    def test_verify_manual_requirement_not_blocking_complete(self):
+        self.set_goal()
+        self.run_cli("add-requirement", "--id", "r1", "--description", "manual check")
+        self.run_cli("complete", "--evidence", "manually verified")
+        self.assertEqual(self.goal.read_state(SESSION)["status"], "complete")
+
+
 if __name__ == "__main__":
     unittest.main()

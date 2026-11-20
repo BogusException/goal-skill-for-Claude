@@ -14,11 +14,12 @@ import json
 import os
 import pathlib
 import re
+import subprocess
 import sys
 import tempfile
 import urllib.request
 
-VERSION = "1.3.2"
+VERSION = "1.4.0"
 
 MAX_OBJECTIVE_CHARS = 4000
 STALL_LIMIT = 3
@@ -137,6 +138,7 @@ def new_state(objective, at):
         "usage": empty_usage(),
         "by_model": {},
         "turns": [],
+        "requirements": [],
     }
 
 
@@ -452,6 +454,17 @@ def script_command(session):
 
 def build_work_prompt(state, session, at):
     command = script_command(session)
+    has_reqs = bool(state.get("requirements"))
+    if has_reqs:
+        verify_rule = f"4. Run verification before completing: {command} verify\n   Fix any failures. Do not call complete while verify reports failures.\n"
+        complete_rule_num = 5
+        pause_rule_num = 6
+        nosummary_rule_num = 7
+    else:
+        verify_rule = ""
+        complete_rule_num = 4
+        pause_rule_num = 5
+        nosummary_rule_num = 6
     return f"""Goal mode is active. Work toward the objective below.
 
 <goal_objective>
@@ -466,11 +479,11 @@ Rules:
 1. Log this turn first (single Bash command): {command} log-entry --note "<one sentence: what you will do this turn>"
 2. Do the next concrete step now. Use tools. Do not ask the user to confirm the plan.
 3. Before you call the goal done, audit it. List each requirement in the objective. Check each one against real evidence: run the tests, read the files, run the command. Do not rely on effort or memory.
-4. If every requirement is met, run: {command} complete --evidence "<what you checked and the result>"
+{verify_rule}{complete_rule_num}. If every requirement is met, run: {command} complete --evidence "<what you checked and the result>"
    Then give the user a short final report.
-5. If you need a decision or input from the user, or you are blocked, run: {command} pause --reason "<the exact question or blocker>"
+{pause_rule_num}. If you need a decision or input from the user, or you are blocked, run: {command} pause --reason "<the exact question or blocker>"
    Then stop and ask. A turn that ends while the goal is active continues automatically, so do not end a turn with a question without pausing first.
-6. Do not stop to summarize progress. Keep working."""
+{nosummary_rule_num}. Do not stop to summarize progress. Keep working."""
 
 
 def build_wrapup_prompt(state):
@@ -573,6 +586,22 @@ def run_view(session):
             if len(turns) > 5:
                 print(f"  ... {len(turns) - 5} earlier entries. Run /goal log to see all.")
 
+        # Requirements
+        reqs = state.get("requirements", [])
+        if reqs:
+            print()
+            print("Requirements:")
+            for req in reqs:
+                if not req.get("check"):
+                    tag = "MANUAL"
+                elif req.get("passed") is True:
+                    tag = "PASS"
+                elif req.get("passed") is False:
+                    tag = "FAIL"
+                else:
+                    tag = "pending"
+                print(f"  [{tag}] {req['id']}: {req['description']}")
+
         # Price source info
         script = pathlib.Path(__file__).name
         if source_name == "bundled":
@@ -653,6 +682,19 @@ def run_complete(session, evidence):
         raise SystemExit("Goal error: --evidence is required. State what you checked and the result.")
     if state["status"] != "active":
         raise SystemExit(f"Goal error: the goal is {state['status']}, not active.")
+    auto_reqs = [r for r in state.get("requirements", []) if r.get("check")]
+    if auto_reqs:
+        all_passed, failures = _check_requirements_for_complete(state)
+        if not all_passed:
+            write_state(session, state)
+            lines = [
+                "Goal error: completion blocked -- the following requirements failed:",
+                "",
+                *failures,
+                "",
+                "Fix the failures, then retry: goal.py complete --evidence '...'",
+            ]
+            raise SystemExit("\n".join(lines))
     at = now()
     state["usage"], state["by_model"] = read_usage(session, state)
     end_state(state, "complete", evidence.strip(), at)
@@ -661,6 +703,11 @@ def run_complete(session, evidence):
     cost = estimate_cost(state["by_model"], prices)
     print("Goal complete.")
     print(render_status(state, at, cost=cost))
+    reqs = state.get("requirements", [])
+    if reqs:
+        passed_auto = sum(1 for r in reqs if r.get("passed") is True)
+        manual = sum(1 for r in reqs if not r.get("check"))
+        print(f"Requirements: {passed_auto} auto-verified, {manual} manual, {len(reqs)} total")
 
 
 def run_log_entry(session, note):
@@ -676,6 +723,103 @@ def run_log_entry(session, note):
         "note": (note or "").strip()[:200],
     })
     write_state(session, state)
+
+
+def run_add_requirement(session, req_id, description, check):
+    state = require_state(session)
+    if state["status"] not in ("active", "paused"):
+        raise SystemExit(f"Goal error: the goal is {state['status']}. Requirements cannot be added.")
+    reqs = state.setdefault("requirements", [])
+    if any(r["id"] == req_id for r in reqs):
+        raise SystemExit(f"Goal error: requirement '{req_id}' already exists.")
+    reqs.append({
+        "id": req_id,
+        "description": description,
+        "check": check or None,
+        "result": None,
+        "evidence": None,
+        "passed": None,
+    })
+    write_state(session, state)
+    print(f"Requirement added: [{req_id}] {description}")
+    print(f"  Verification: {check if check else 'manual'}")
+
+
+def _run_requirement_check(req):
+    """Run one requirement's check command. Returns (passed, result_text)."""
+    if not req.get("check"):
+        return None, "manual"
+    try:
+        proc = subprocess.run(
+            req["check"],
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        passed = proc.returncode == 0
+        output = (proc.stdout + proc.stderr).strip()
+        result = output[:500] if output else f"exit {proc.returncode}"
+        return passed, result
+    except subprocess.TimeoutExpired:
+        return False, "timed out after 60s"
+    except Exception as exc:
+        return False, str(exc)[:200]
+
+
+def _check_requirements_for_complete(state):
+    """Run all auto-verifiable requirements. Returns (all_passed, failure_lines)."""
+    failures = []
+    for req in state.get("requirements", []):
+        if not req.get("check"):
+            continue
+        passed, result = _run_requirement_check(req)
+        req["result"] = result
+        req["passed"] = passed
+        if not passed:
+            first_line = result.split("\n")[0][:80] if result else ""
+            failures.append(f"  [{req['id']}] {req['description']}: {first_line}")
+    return len(failures) == 0, failures
+
+
+def run_verify(session):
+    state = require_state(session)
+    reqs = state.get("requirements", [])
+    if not reqs:
+        print("No requirements defined for this goal.")
+        print("Add one: goal.py add-requirement --id REQ_ID --description 'desc' [--check 'command']")
+        print("ACTION: report")
+        return
+    fail_count = 0
+    auto_count = 0
+    for req in reqs:
+        passed, result = _run_requirement_check(req)
+        req["result"] = result
+        req["passed"] = passed
+        if passed is None:
+            tag = "MANUAL"
+        elif passed:
+            tag = "PASS"
+            auto_count += 1
+        else:
+            tag = "FAIL"
+            fail_count += 1
+            auto_count += 1
+        print(f"[{tag}] {req['id']}: {req['description']}")
+        if result and result != "manual":
+            print(f"       {result.split(chr(10))[0][:100]}")
+    write_state(session, state)
+    print()
+    manual_count = sum(1 for r in reqs if not r.get("check"))
+    if fail_count:
+        print(f"{fail_count} requirement(s) failed.")
+        print("ACTION: work")
+    else:
+        if auto_count:
+            print(f"All {auto_count} automated requirement(s) passed.")
+        if manual_count:
+            print(f"{manual_count} requirement(s) require manual verification.")
+        print("ACTION: report")
 
 
 def run_log(session):
@@ -906,6 +1050,11 @@ def build_parser():
     prices.add_argument("--refresh", action="store_true", help="fetch latest prices before showing")
     prices.add_argument("--all", dest="all_models", action="store_true",
                         help="show all models, not just canonical names")
+    add_req = commands.add_parser("add-requirement", help="register a named requirement against the active goal")
+    add_req.add_argument("--id", dest="req_id", required=True)
+    add_req.add_argument("--description", required=True)
+    add_req.add_argument("--check", default="")
+    commands.add_parser("verify", help="run all auto-verifiable requirements and report pass/fail")
     return parser
 
 
@@ -935,6 +1084,10 @@ def main(argv=None):
         run_history()
     elif args.command == "prices":
         run_prices(refresh=args.refresh, all_models=args.all_models)
+    elif args.command == "add-requirement":
+        run_add_requirement(args.session, args.req_id, args.description, args.check)
+    elif args.command == "verify":
+        run_verify(args.session)
 
 
 if __name__ == "__main__":

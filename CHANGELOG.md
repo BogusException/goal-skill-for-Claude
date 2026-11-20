@@ -4,6 +4,18 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ---
 
+## [1.4.0] - 2026-11-20
+
+### Added: Requirements verification
+
+- **`add-requirement` subcommand.** Register named requirements against a goal. Each has an id, a description, and an optional shell command to verify it. Requirements with no check command are marked manual.
+- **`verify` subcommand.** Runs every auto-verifiable requirement's check command and prints a PASS/FAIL/MANUAL table. Saves results to the state file. Exits with ACTION: work when any requirement fails.
+- **`complete` now enforces requirements.** When a goal has auto-verifiable requirements, `complete` runs them before marking the goal done. If any fail, completion is blocked with a list of which requirements failed and what the check command printed.
+- **Requirements visible in `/goal` status.** When requirements are defined, the status view shows each one with its current pass/fail/manual/pending state.
+- **Work prompt updated.** When requirements are attached to a goal, the continuation prompt includes an explicit rule to run `verify` before calling `complete`.
+
+---
+
 ## [1.3.2] - 2026-11-20 — CRC32(goal.py) `243259E8`
 
 ### Fixed: Global installation path resolution and project-directory detection

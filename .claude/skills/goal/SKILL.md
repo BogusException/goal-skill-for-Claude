@@ -1,8 +1,8 @@
 ---
 name: goal
-version: 1.3.2
-description: Set a persistent goal and keep working across turns until it is verifiably done. Replicates ChatGPT/Codex /goal. Use /goal {objective}, /goal (view), /goal pause, /goal resume, /goal clear, /goal edit {objective}, /goal log, /goal history, /goal prices.
-argument-hint: "[objective | pause | resume | clear | edit {objective} | log | history | prices [--refresh] [--all]]"
+version: 1.4.0
+description: Set a persistent goal and keep working across turns until it is verifiably done. Supports named requirements with automated verification. Replicates ChatGPT/Codex /goal. Use /goal {objective}, /goal (view), /goal pause, /goal resume, /goal clear, /goal edit {objective}, /goal log, /goal history, /goal prices, /goal verify.
+argument-hint: "[objective | pause | resume | clear | edit {objective} | log | history | prices [--refresh] [--all] | verify | add-requirement]"
 disable-model-invocation: true
 allowed-tools: Bash(.venv/bin/python .claude/skills/goal/goal.py *)
 ---
@@ -36,3 +36,24 @@ A Stop hook (`.claude/skills/goal/goal-continue.sh`) restarts you after each tur
 4. A limit is reached (token budget, 100 continuations, or 3 identical turns in a row).
 
 While a goal is active, do not end a turn with a question. Pause first, then ask.
+
+## Requirements
+
+When a goal has verifiable requirements, add them after setting the goal:
+
+```bash
+python3 "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/goal/goal.py" \
+    --session "${CLAUDE_SESSION_ID}" add-requirement \
+    --id req-1 \
+    --description "all tests pass" \
+    --check "python -m pytest -q"
+```
+
+Before completing, run verify:
+
+```bash
+python3 "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/goal/goal.py" \
+    --session "${CLAUDE_SESSION_ID}" verify
+```
+
+`complete` will also run all checks automatically and block completion if any fail.
